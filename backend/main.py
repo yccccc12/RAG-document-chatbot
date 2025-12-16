@@ -1,10 +1,11 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 
 from rag_pipeline import RAGPipeline
 from typing import List, Union
 import os
+import json
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -63,7 +64,7 @@ async def upload_pdf(files: Union[List[UploadFile], UploadFile] = File(...)):
         "total_chunks": total_chunks
     }
 
-# Endpoint to ask a question
+# Endpoint to ask a question and get a streaming response
 @app.post("/ask/")
 async def ask_question(question: str = Form(...), api_key: str = Form(None)):
     # Allow runtime override of Google API key
@@ -71,10 +72,16 @@ async def ask_question(question: str = Form(...), api_key: str = Form(None)):
         os.environ["GOOGLE_API_KEY"] = api_key
 
     try:
-        answer = rag_pipeline.query(question)
-        return answer
+        # Stream the response
+        def iterfile():
+            for chunk in rag_pipeline.stream_query(question):
+                yield json.dumps(chunk) + "\n"
+
+        return StreamingResponse(iterfile(), media_type="application/x-ndjson")
+
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
@@ -82,8 +89,10 @@ async def ask_question(question: str = Form(...), api_key: str = Form(None)):
 @app.get("/get_pdf/{pdf_name}")
 async def get_pdf(pdf_name: str):
     file_path = os.path.join(UPLOAD_DIR, pdf_name)
+
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="PDF not found")
+    
     return FileResponse(path=file_path, filename=pdf_name, media_type="application/pdf")
 
 # Endpoint to root

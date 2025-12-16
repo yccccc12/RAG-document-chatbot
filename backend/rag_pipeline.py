@@ -20,7 +20,7 @@ class RAGPipeline:
         self.embeddings_model = HuggingFaceEmbeddings(model_name="intfloat/e5-small-v2")
 
         self.llm = ChatGoogleGenerativeAI(
-                model="gemini-2.5-flash", 
+                model="gemini-2.5-flash-lite", 
                 temperature=0.1, 
                 max_output_tokens=1024
             )
@@ -119,6 +119,37 @@ class RAGPipeline:
             )
         )
     
+    # -- Stream query the vector store to get an answer --
+    def stream_query(self, query: str, k: int = 3):
+        if not self.vector_store:
+            raise ValueError("Vector store is not built.")
+
+        self._build_chain(k)
+
+        final_docs = None
+
+        for chunk in self.rag_chain.stream({"question": query}):
+            # Stream answer tokens
+            if "answer" in chunk:
+                yield {"type": "answer", "content": chunk["answer"]}
+
+            # Capture docs once
+            if "docs" in chunk and final_docs is None:
+                final_docs = chunk["docs"]
+
+        # Emit sources at the end
+        yield {
+            "type": "sources",
+            "content": [
+                {
+                    "page": doc.metadata.get("page"),
+                    "content": doc.page_content,
+                }
+                for doc in final_docs
+            ],
+        }
+
+    '''
     # -- Query the vector store to get an answer --
     def query(self, query: str, k: int = 3):
         if not self.vector_store:
@@ -134,8 +165,9 @@ class RAGPipeline:
             "sources": [
                 {
                     "page": doc.metadata.get("page"),
-                    "content": doc.page_content[:100]
+                    "content": doc.page_content
                 }
                 for doc in result["docs"]
             ]
         }
+    '''
