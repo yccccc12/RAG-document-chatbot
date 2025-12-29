@@ -1,14 +1,23 @@
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda, RunnableParallel
 from langchain_community.vectorstores import FAISS
+from langchain.messages import AIMessage, HumanMessage, SystemMessage
+from langchain.agents import create_agent
+from langchain_community.retrievers import ArxivRetriever
+
+from langgraph.checkpoint.memory import InMemorySaver
 
 from operator import itemgetter
 import os
+import time
+
+from tavily import TavilyClient
+from typing import Dict, Any
+from langchain.tools import tool
 
 # -- Set up vector store path --
 VECTOR_STORE_PATH = "./faiss_db"
@@ -17,7 +26,7 @@ VECTOR_STORE_PATH = "./faiss_db"
 class RAGPipeline:
     # Constructor for RAGPipeline
     def __init__(self):
-        self.embeddings_model = HuggingFaceEmbeddings(model_name="intfloat/e5-small-v2")
+        self.embeddings_model = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
 
         self.llm = ChatGoogleGenerativeAI(
                 model="gemini-2.5-flash-lite", 
@@ -109,7 +118,7 @@ class RAGPipeline:
             | {
                 'question': itemgetter("question"), 
                 'context': itemgetter("docs") | RunnableLambda(format_docs), # Format the documents to a string
-                'docs' : itemgetter("docs")                                            # get the documents (output)
+                'docs' : itemgetter("docs")                                  # get the documents (output)
             }
 
             # -- Generate answer and keep sources --
@@ -142,32 +151,9 @@ class RAGPipeline:
             "type": "sources",
             "content": [
                 {
-                    "page": doc.metadata.get("page"),
+                    "page": doc.metadata.get("page") + 1,
                     "content": doc.page_content,
                 }
                 for doc in final_docs
             ],
         }
-
-    '''
-    # -- Query the vector store to get an answer --
-    def query(self, query: str, k: int = 3):
-        if not self.vector_store:
-            raise ValueError("Vector store is not built. Please build it before querying.")
-        
-        self._build_chain(k=k)
-
-        # invoke chain
-        result = self.rag_chain.invoke({"question": query})
-
-        return {
-            "answer": result["answer"],
-            "sources": [
-                {
-                    "page": doc.metadata.get("page"),
-                    "content": doc.page_content
-                }
-                for doc in result["docs"]
-            ]
-        }
-    '''
