@@ -20,6 +20,7 @@ os.environ["GOOGLE_API_KEY"] = os.getenv("GOOGLE_API_KEY")
 
 # -- Set up directory for uploaded PDFs --
 UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # -- Initialize FastAPI app --
 app = FastAPI()
