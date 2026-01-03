@@ -164,4 +164,11 @@ if st.session_state.search_results:
         st.markdown(f"<p style='text-align: center;'><b>{st.session_state.preview_idx + 1} / {len(st.session_state.search_results)}</b><br>{current_paper['title']}</p>", unsafe_allow_html=True)
 
     # PDF Display
-    st.markdown(f'<iframe src="{current_paper["pdf"]}" width="100%" height="900" style="border-radius: 10px;"></iframe>', unsafe_allow_html=True)
+    pdf_url = current_paper["pdf"]
+    # This wraps the URL so Google's engine renders it inside your frame
+    google_viewer_url = f"https://docs.google.com/viewer?url={pdf_url}&embedded=true"
+
+    st.markdown(
+        f'<iframe src="{google_viewer_url}" width="100%" height="900" style="border: none; border-radius: 10px;"></iframe>', 
+        unsafe_allow_html=True
+    )
