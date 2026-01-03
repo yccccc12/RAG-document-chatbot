@@ -1,0 +1,14 @@
+arxiv
+faiss-cpu
+fastapi
+langchain
+langchain-community
+langchain-core
+langchain-google-genai
+pymupdf
+python-dotenv
+python-multipart
+requests
+streamlit
+tavily
+uvicorn
