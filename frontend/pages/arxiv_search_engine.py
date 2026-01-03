@@ -165,7 +165,7 @@ if st.session_state.search_results:
 
     # PDF Display
     pdf_url = current_paper["pdf"]
-    # This wraps the URL so Google's engine renders it inside your frame
+
     google_viewer_url = f"https://docs.google.com/viewer?url={pdf_url}&embedded=true"
 
     st.markdown(
