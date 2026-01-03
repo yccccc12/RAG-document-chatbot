@@ -129,6 +129,7 @@ async def search_papers(query: str, category: str = "", sort_by: str=  "relevanc
     )
 
     results = list(arxiv_client.results(search))
+
     return [
         Paper(
             title=r.title,
@@ -169,6 +170,7 @@ async def ingest_from_url(url: str, title: str):
 
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=400, detail=f"Failed to download PDF from URL: {str(e)}")
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {str(e)}")
 
