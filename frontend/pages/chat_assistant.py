@@ -42,33 +42,40 @@ with st.sidebar:
             st.divider()
             
             # Upload / Clear all button
-            col_proc, col_clr = st.columns(2)
+            col_process, col_clear = st.columns(2)
 
-            with col_proc:
-                if st.button("Process", use_container_width=True, type="primary"):
-                    with st.spinner("Ingesting papers..."):
-                        for p in st.session_state.ingest_target:
-                            params = {
-                                "url": p['pdf'], 
-                                "title": p['title']
-                            }
+            with col_process:
+                process_clicked = st.button("Process", use_container_width=True, type="primary")
 
-                            try:
-                                res = requests.post(f"{BACKEND_URL}/ingest-from-url/", params=params)
-                                if res.status_code == 200:
-                                    st.success(f"✅ {params['title']} uploaded!")
-                                else:
-                                    st.error(f"❌ Error uploading {params['title']}: {res.text}")
-                            except Exception as e:
-                                st.error(f"❌ Connection error: {e}")
-                    
-                    st.success("✅ All papers processed!")
-                    st.session_state.ingest_target = [] # Clear the list after successful processing
+            with col_clear:
+                clear_clicked = st.button("Clear", use_container_width=True)
 
-            with col_clr:
-                if st.button("Clear", use_container_width=True):
-                    st.session_state.ingest_target = [] # Reset to empty list
-                    st.rerun()
+            if process_clicked:
+                
+                for p in st.session_state.ingest_target:
+                    params = {
+                        "url": p['pdf'],
+                        "title": p['title']
+                    }
+
+                    with st.spinner(f"Ingesting {p['title']}..."):
+                        try:
+                            res = requests.post(f"{BACKEND_URL}/ingest-from-url/", params=params)
+                            if res.status_code == 200:
+                                st.success(f"✅ {params['title']} uploaded!")
+
+                            else:
+                                st.error(f"❌ Error uploading {params['title']}: {res.text}")
+
+                        except Exception as e:
+                            st.error(f"❌ Connection error: {e}")
+
+                st.success("✅ All papers processed!")
+                st.session_state.ingest_target = [] # Clear the list after successful processing
+
+            if clear_clicked:
+                st.session_state.ingest_target = [] # Reset to empty list
+                st.rerun()
 
     uploaded_files = st.file_uploader(
         "Choose PDF file(s)", 
@@ -113,7 +120,16 @@ for message in st.session_state.messages:
         if "sources" in message and message["sources"]:
             with st.expander("📚 Sources"):
                 for source in message["sources"]:
-                    st.markdown(f"- **Page {source['page']}**: {source['content']}...")
+                    # 1. Check for PDF source
+                    if "page" in source:
+                        st.markdown(f"📄 **Page {source['page']}**")
+                        st.caption(source['content'])
+                        
+                    # 2. Check for Web source (fallback)
+                    elif "url" in source:
+                        st.markdown(f"🌐 **Web Search**: [{source['url']}]({source['url']})")
+                        if "content" in source:
+                            st.text(source['content'])
 
 # Handle user input
 if prompt := st.chat_input("Ask a question about your documents..."):
@@ -146,11 +162,17 @@ if prompt := st.chat_input("Ask a question about your documents..."):
                     
                     message_placeholder.markdown(full_response)
                     
-                    # Display sources in expander
-                    if sources:
-                        with st.expander("📚 Sources"):
-                            for source in sources:
-                                st.markdown(f"- **Page {source['page']}**: {source['content']}...")
+                    with st.expander("📚 Sources"):
+                        for source in sources:
+                            # Check if it's a PDF source
+                            if source.get("type") == "pdf" or "page" in source:
+                                st.markdown(f"📄 **Page {source['page']}**")
+                                st.caption(source['content'])
+                                
+                            # Check if it's a Web source
+                            elif source.get("type") == "web" or "url" in source:
+                                st.markdown(f"🌐 **Web Source**: [{source['url']}]({source['url']})")
+                                st.text(source['content'])
                     
                     # Add to history
                     st.session_state.messages.append({
