@@ -3,7 +3,7 @@ import requests
 import json
 
 # --- FastAPI backend URL ---
-BACKEND_URL = "http://127.0.0.1:8000"
+BACKEND_URL  = st.secrets.get("BACKEND_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(
     page_title="RAG Document Chatbot", 
