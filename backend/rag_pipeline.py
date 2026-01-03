@@ -5,22 +5,21 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda, RunnableParallel
 from langchain_community.vectorstores import FAISS
-from langchain.messages import AIMessage, HumanMessage, SystemMessage
-from langchain.agents import create_agent
-from langchain_community.retrievers import ArxivRetriever
-
+from langchain.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
-
+from langchain_core.prompts import MessagesPlaceholder, PromptTemplate
+from tavily import TavilyClient
 from operator import itemgetter
 import os
-import time
 
-from tavily import TavilyClient
-from typing import Dict, Any
-from langchain.tools import tool
+from dotenv import load_dotenv
+load_dotenv()
 
 # -- Set up vector store path --
 VECTOR_STORE_PATH = "./faiss_db"
+
+# -- Set up Tavily Search Tool --
+tavily_client = TavilyClient()
 
 # -- RAGPipeline class --
 class RAGPipeline:
@@ -43,6 +42,10 @@ class RAGPipeline:
             )
         else:
             self.vector_store = None
+
+        self.tavily_client = tavily_client
+
+        self.chat_history = []
 
         self._build_prompt()
         self._build_chain()
@@ -78,22 +81,22 @@ class RAGPipeline:
 
         return len(chunks)
     
-    # -- Prompt Template --
+    # -- Prompt Template for main RAG Agent --
     def _build_prompt(self):
         self.prompt = ChatPromptTemplate.from_messages([
-           (
+            (
                 "system",
-                "You are a helpful AI assistant. "
-                "Answer ONLY using the provided context. "
-                "If the answer is not found, say 'I don't know'."
+                "You are a helpful research assistant. "
+                "1. First, check the Chat History. If the user is asking about themselves (like their name), answer from memory. "
+                "2. If the question is technical, use the provided PDF or Web Context. "
+                "3. If the Context is empty or irrelevant to a personal question, rely on your conversation history."
             ),
-
+            MessagesPlaceholder(variable_name="chat_history"),
             (
                 'user', 
-                'Context: {context}\n\nQuestion: {question}\n\nAnswer in a concise manner.'
+                'Context from Search/PDF: {context}\n\nQuestion: {question}'
             )
-        ]
-        )
+        ])
 
     # -- RAG Chain --
     def _build_chain(self, k: int = 3):
@@ -128,32 +131,108 @@ class RAGPipeline:
             )
         )
     
-    # -- Stream query the vector store to get an answer --
-    def stream_query(self, query: str, k: int = 3):
-        if not self.vector_store:
-            raise ValueError("Vector store is not built.")
+    # -- Use LLM as a judge to check if the context is relevant to the question asked --
+    def _check_relevance(self, query: str, context: str) -> bool:
+        prompt = PromptTemplate.from_template(
+            """
+            You are a judge assessing whether the provided context is relevant to answer the question.
+            Question: {query}
+            Context: {context}
 
-        self._build_chain(k)
+            Answer with a "Yes" if the context is relevant, otherwise answer "No".
+            Strictly respond with only "Yes" or "No" only.
+            """
+        )
 
-        final_docs = None
+        grader = prompt | self.llm | StrOutputParser()
+        response = grader.invoke({"query": query, "context": context}).lower().strip()
 
-        for chunk in self.rag_chain.stream({"question": query}):
-            # Stream answer tokens
-            if "answer" in chunk:
-                yield {"type": "answer", "content": chunk["answer"]}
+        return "yes" == response
 
-            # Capture docs once
-            if "docs" in chunk and final_docs is None:
-                final_docs = chunk["docs"]
+    # -- Prompt refiner to rephrase follow-up questions as standalone questions --
+    def _refine_prompt(self, query: str) -> str:
+        prompt = PromptTemplate.from_template(
+            """
+            You are a prompt refiner. Given the conversation history and a follow-up question,
+            rephrase the follow-up question to be a standalone question.
+
+            Note:
+            1. Do not add any additional information.
+            2. Do not answer the question.
+            3. Your task is only to rephrase the question.
+            4. If the question is already standalone, return it as is.
+
+            Conversation History: {chat_history}
+            Follow-Up Question: {question}
+            """
+        )
+        refiner = prompt | self.llm | StrOutputParser()
+        return refiner.invoke({"chat_history": self.chat_history, "question": query})
+    
+    def stream_query(self, query: str):
+        # Refine the prompt if there is chat history
+        if self.chat_history:
+            query = self._refine_prompt(query)
+        
+        # Retrieve from Vector Store
+        docs = []
+        context = ""
+        sources = []
+        is_relevant = False
+
+        if self.vector_store is not None:
+            docs = self.vector_store.as_retriever().invoke(query)
+            context = "\n\n".join([d.page_content for d in docs])
+
+            # Check if retrieved context is relevant to the query
+            is_relevant = self._check_relevance(query, context)
+
+        if not is_relevant:
+            search_results = self.tavily_client.search(query=query, max_results=3)
+
+            # Format Web Sources
+            for res in search_results['results']:
+                sources.append({
+                    "type": "web",
+                    "url": res.get("url"),
+                    "content": res.get("content")
+                })
+
+            # Rewrite context to include search results
+            context = "\n\nWeb Search Results:\n"
+            for idx, res in enumerate(search_results['results'], 1):
+                context += f"{idx}. {res.get('content')}\n Source: {res.get('url')}\n\n"
+            
+        else:
+            # Extract PDF Sources
+            for doc in docs:
+                sources.append({
+                    "type": "pdf",
+                    "page": doc.metadata.get("page", 0) + 1,
+                    "content": doc.page_content
+                })
+
+        # Chain execution with Memory
+        chain = self.prompt | self.llm | StrOutputParser()
+        
+        full_response = ""
+        for chunk in chain.stream({ "question": query, "context": context, "chat_history": self.chat_history }):
+            full_response += chunk
+            yield {
+                "type": "answer", 
+                "content": chunk
+                }
+
+        # Save to Memory
+        self.chat_history.append(HumanMessage(content=query))
+        self.chat_history.append(AIMessage(content=full_response))
+        
+        # Keep last 10 messages
+        if len(self.chat_history) > 10:
+            self.chat_history = self.chat_history[-10:]
 
         # Emit sources at the end
         yield {
             "type": "sources",
-            "content": [
-                {
-                    "page": doc.metadata.get("page") + 1,
-                    "content": doc.page_content,
-                }
-                for doc in final_docs
-            ],
+            "content": sources
         }
