@@ -6,32 +6,28 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableLambda, RunnableParallel
 from langchain_community.vectorstores import FAISS
 from langchain.messages import AIMessage, HumanMessage
-from langgraph.checkpoint.memory import InMemorySaver
 from langchain_core.prompts import MessagesPlaceholder, PromptTemplate
 from tavily import TavilyClient
 from operator import itemgetter
 import os
 
-from dotenv import load_dotenv
-load_dotenv()
-
 # -- Set up vector store path --
 VECTOR_STORE_PATH = "./faiss_db"
-
-# -- Set up Tavily Search Tool --
-tavily_client = TavilyClient()
 
 # -- RAGPipeline class --
 class RAGPipeline:
     # Constructor for RAGPipeline
-    def __init__(self):
-        self.embeddings_model = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001")
+    def __init__(self, google_api_key: str, tavily_api_key: str):
+        self.embeddings_model = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", api_key=google_api_key)
 
         self.llm = ChatGoogleGenerativeAI(
                 model="gemini-2.5-flash-lite", 
                 temperature=0.1, 
-                max_output_tokens=1024
+                max_output_tokens=1024,
+                google_api_key=google_api_key
             )
+
+        self.tavily_client = TavilyClient(api_key=tavily_api_key)
 
         # Load vector store
         if os.path.exists(VECTOR_STORE_PATH):
@@ -43,13 +39,11 @@ class RAGPipeline:
         else:
             self.vector_store = None
 
-        self.tavily_client = tavily_client
-
         self.chat_history = []
 
         self._build_prompt()
         self._build_chain()
-
+    
     # -- PDF Loader --
     def extract_text_from_pdf(self, pdf_path: str) -> str:
         loader = PyMuPDFLoader(pdf_path)
@@ -236,3 +230,6 @@ class RAGPipeline:
             "type": "sources",
             "content": sources
         }
+
+def get_pipeline(google_key: str, tavily_key: str) -> RAGPipeline:
+    return RAGPipeline(google_api_key=google_key, tavily_api_key=tavily_key)
