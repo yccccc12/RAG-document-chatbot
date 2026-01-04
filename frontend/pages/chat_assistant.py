@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import json
 
-# --- FastAPI backend URL ---
+# --- Configuration ---
 BACKEND_URL  = st.secrets.get("BACKEND_URL", "http://127.0.0.1:8000")
 
 st.set_page_config(
@@ -14,15 +14,18 @@ st.set_page_config(
 
 # --- Title ---
 st.title("💬 RAG Document Chatbot")
-st.caption("🚀 Chat with your PDF documents powered by Gemini & LangChain.")
+st.caption("🚀 Chat with your PDF documents.")
 st.markdown("---")
 
+# -- Get Headers --
+def get_headers():
+    return {
+        "X-Google-API-Key": st.session_state.get("google_api_key", ""),
+        "X-Tavily-API-Key": st.session_state.get("tavily_api_key", "")
+    }
 
 # --- Sidebar ---
 with st.sidebar:
-    st.header("⚙️ Configuration")
-    gemini_api_key = st.text_input("Gemini API Key", key="gemini_api_key", type="password")
-    
     st.header("📄 Document Sources")
     
     # Check if the list is not empty
@@ -60,7 +63,7 @@ with st.sidebar:
 
                     with st.spinner(f"Ingesting {p['title']}..."):
                         try:
-                            res = requests.post(f"{BACKEND_URL}/ingest-from-url/", params=params)
+                            res = requests.post(f"{BACKEND_URL}/ingest-from-url/", params=params, headers=get_headers())
                             if res.status_code == 200:
                                 st.success(f"✅ {params['title']} uploaded!")
 
@@ -91,7 +94,7 @@ with st.sidebar:
 
                 with st.spinner(f"Ingesting {file.name}..."):
                     try:
-                        res = requests.post(f"{BACKEND_URL}/upload_pdf/", files=file_payload)
+                        res = requests.post(f"{BACKEND_URL}/upload_pdf/", files=file_payload, headers=get_headers())
                         if res.status_code == 200:
                             st.success(f"✅ {file.name} uploaded!")
                         else:
@@ -143,13 +146,15 @@ if prompt := st.chat_input("Ask a question about your documents..."):
         message_placeholder = st.empty()
         full_response = ""
         sources = []
-        
+
         try:
             with requests.post(
                 f"{BACKEND_URL}/ask/", 
-                data={"question": prompt, "api_key": gemini_api_key},
+                json={ "question" : prompt },
+                headers=get_headers(),
                 stream=True
             ) as r:
+                                
                 if r.status_code == 200:
                     for line in r.iter_lines():
                         if line:
@@ -180,7 +185,12 @@ if prompt := st.chat_input("Ask a question about your documents..."):
                         "content": full_response,
                         "sources": sources
                     })
+
+                elif r.status_code == 401:
+                    st.error("🔑 API Keys are missing.")
+
                 else:
-                    st.error(f"Error: {r.text}")
+                    st.error(f"❌ Error from backend: {r.text}")
+                
         except Exception as e:
             st.error(f"An error occurred: {e}")
