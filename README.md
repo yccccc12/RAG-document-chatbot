@@ -20,6 +20,24 @@ This project develop a document assistant chatbot that combines Retrieval-Augmen
 - **PDF Preview**: Quick-view PDF directly in the app
 - **One-Click Chat**: Queue papers for chatting with Chat Assistant
 
+## Screenshots
+
+### Chat Assistant
+![Chat Assistant Interface](assets/chat_assistant.png) \
+*Figure 1: Upload PDFs and chat with your documents using natural language*
+
+### ArXiv Search Engine
+![ArXiv Search Engine](assets/arxiv_search.png) \
+*Figure 2: Search and explore academic papers from arXiv*
+
+### Papers Details
+![Research Paper Details](assets/paper_details.png) \
+*Figure 3: Expand academic papers details*
+
+### Papers Preview
+![Research Paper preview](assets/preview_paper.png) \
+*Figure 4: Preview papers*
+
 ## Architecture
 
 ```
@@ -32,7 +50,9 @@ RAG-langchain-chatbot/
 │   └── pages/
 │       ├── chat_assistant.py        # Chat interface
 │       └── arxiv_search_engine.py   # ArXiv search interface
-└── notebook/            # Jupyter notebooks for development and experiment
+├── notebook/            # Jupyter notebooks for development and experiment
+├── requirements.txt     # System dependencies
+└── .env.example         # Sample of environemnt files
 ```
 
 ## Tech Stack
@@ -48,56 +68,60 @@ RAG-langchain-chatbot/
 
 ## Prerequisites
 
-- Python 3.8+
 - Google Gemini API Key ([Get it here](https://makersuite.google.com/app/apikey))
 - Tavily API Key ([Get it here](https://app.tavily.com/home))
 
-## Installation
+## Usage
 
-1. **Clone the repository**
+### Option 1: Access the Deployed Application
+
+Access the application at: **https://rag-document-chatbot-mkam.streamlit.app/**
+
+Upon opening the application, enter your API credentials in the Streamlit sidebar:
+
+1. **Google Gemini API Key** - Required for LLM responses and embeddings
+2. **Tavily API Key** - Required for web search functionality
+
+Once you've entered your credentials, you can access both features.
+**Note**: If you haven't used the app in a while, it might be "asleep." It can take 2 to 3 minutes to start up and get the database ready for your first question.
+
+### Option 2: Local Setup
+
+If you prefer to run the application locally, switch to the `deployment-test` branch:
+
 ```bash
+# Clone the repository
 git clone https://github.com/yccccc12/RAG-document-chatbot.git
 cd RAG-document-chatbot
-```
 
-2. **Create and activate a virtual environment**
-```bash
+# Switch to the deployment-test branch
+git checkout deployment-test
+
+# Create and activate a virtual environment
 python -m venv venv
 # On Windows
 venv\Scripts\activate
 # On macOS/Linux
 source venv/bin/activate
-```
 
-3. **Install dependencies**
-```bash
+# Install dependencies
 pip install -r requirements.txt
-```
 
-4. **Set up environment variables**
-
-Fill up the `.env.example` file in the root directory with your own API Key:
-```env.example
+# Set up environment variables
+# Create a .env file in the root directory with:
 GOOGLE_API_KEY=your_google_api_key_here
 TAVILY_API_KEY=your_tavily_api_key_here
-```
-After filled up, **rename the file to `.env`**
 
-## Usage
-
-### Running the Application
-
-1. **Start the FastAPI backend** (in terminal 1)
-```bash
+# Start the FastAPI backend (terminal 1)
 python backend/main.py
-```
-The backend will be available at `http://127.0.0.1:8000`
 
-2. **Start the Streamlit frontend** (in terminal 2)
-```bash
+# Start the Streamlit frontend (terminal 2)
 streamlit run frontend/app.py
 ```
-The frontend will open in your browser at `http://localhost:8501`
+
+The application will be available at `http://localhost:8501`
+
+---
 
 ### Using the Chat Assistant
 
@@ -151,8 +175,9 @@ Edit `backend/rag_pipeline.py` to customize:
    - User question is embedded
    - Similar chunks are retrieved from FAISS
    - Relevance is checked using LLM as judge
+     - An AI Judge looks at the retrieved paragraphs to see if they actually contain the answer.
+     - Fallback: If the documents don't have the answer, the system automatically uses Tavily to search the web for real-time information.
    - Context is provided to Gemini for answer generation
-   - Falls back to web search if context is insufficient
 
 
 ## License
@@ -161,9 +186,6 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ## Acknowledgments
 
+- [Google Gemini](https://ai.google.dev/) for providing the LLM.
 - [LangChain](https://www.langchain.com/) for the RAG framework
 - [arXiv](https://arxiv.org/) for research paper access
-
----
-
-**Note**: This application requires API keys for Google Gemini and optionally Tavily. Make sure to set up your `.env` file before running the application.
